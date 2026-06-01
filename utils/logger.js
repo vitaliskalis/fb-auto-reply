@@ -15,7 +15,18 @@ const logger = winston.createLogger({
     })
   ),
   transports: [
-    new winston.transports.Console(),
+    new winston.transports.Console({
+      format: winston.format.combine(
+        winston.format.colorize(),
+        winston.format.printf(({ timestamp, level, message, ...meta }) => {
+          let metaStr = '';
+          if (Object.keys(meta).length > 0) {
+            metaStr = ` ${JSON.stringify(meta)}`;
+          }
+          return `${timestamp} [${level}]: ${message}${metaStr}`;
+        })
+      ),
+    }),
     new winston.transports.File({ filename: 'logs/error.log', level: 'error' }),
     new winston.transports.File({ filename: 'logs/combined.log' }),
   ],

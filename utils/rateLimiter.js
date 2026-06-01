@@ -3,34 +3,28 @@ const logger = require('./logger');
 
 class RateLimiter {
   constructor() {
-    this.requests = new Map(); // { userId: [timestamps] }
+    this.requests = new Map();
   }
 
   isAllowed(userId) {
     const now = Date.now();
     const windowStart = now - config.rateLimit.windowMs;
 
-    // Get or create user's request history
     if (!this.requests.has(userId)) {
       this.requests.set(userId, []);
     }
 
     let timestamps = this.requests.get(userId);
-
-    // Remove old timestamps outside the window
     timestamps = timestamps.filter(timestamp => timestamp > windowStart);
 
-    // Check if user has exceeded rate limit
     if (timestamps.length >= config.rateLimit.maxRequests) {
       logger.warn(`Rate limit exceeded for user ${userId}`);
       return false;
     }
 
-    // Add current timestamp
     timestamps.push(now);
     this.requests.set(userId, timestamps);
 
-    // Cleanup old entries every 10 minutes
     if (this.requests.size > 10000) {
       this.cleanup();
     }

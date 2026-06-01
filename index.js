@@ -1,142 +1,78 @@
-const express = require('express');
-const bodyParser = require('body-parser');
+const Telegraf = require('telegraf');
 const config = require('./config');
 const logger = require('./utils/logger');
-const facebookService = require('./services/facebookService');
-const commandHandler = require('./handlers/commandHandler');
+const TelegramCommandHandler = require('./handlers/telegramCommandHandler');
 
-const app = express();
-app.use(bodyParser.json());
+// Initialize bot
+const bot = new Telegraf(config.telegram.botToken);
 
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.status(200).json({
-    status: 'OK',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
+// Middleware for logging
+bot.use((ctx, next) => {
+  const from = ctx.update.message?.from || ctx.update.callback_query?.from;
+  if (from) {
+    logger.info(`Message from ${from.first_name} (${from.id}): ${ctx.update.message?.text || 'callback'}`);
+  }
+  return next();
+});
+
+// Error handling
+bot.catch((err, ctx) => {
+  logger.error(`Telegraf error: ${err.message}`, { error: err });
+  ctx.reply('🔧 Ada error di sistem saya. Tim admin sudah diberitahu. Coba lagi nanti ya!');
+});
+
+// Commands
+bot.command('start', async (ctx) => {
+  await TelegramCommandHandler.handleStart(ctx);
+});
+
+bot.command('help', async (ctx) => {
+  await TelegramCommandHandler.handleHelp(ctx);
+});
+
+bot.command('proposal', async (ctx) => {
+  await TelegramCommandHandler.handleProposal(ctx);
+});
+
+bot.command('status', async (ctx) => {
+  await TelegramCommandHandler.handleStatus(ctx);
+});
+
+// Handle unknown commands
+bot.use(async (ctx) => {
+  if (ctx.message?.text?.startsWith('/')) {
+    const command = ctx.message.text.split(' ')[0].slice(1);
+    logger.warn(`Unknown command: /${command}`);
+    await ctx.reply(`❓ Perintah "/${command}" tidak ditemukan.\nKetik /help untuk melihat perintah yang tersedia.`);
+  }
+});
+
+// Start bot
+if (config.bot.polling) {
+  logger.info('🚀 Starting bot with polling...');
+  bot.launch({
+    polling: {
+      interval: config.bot.pollingInterval,
+    },
   });
-});
-
-// Webhook verification endpoint (GET)
-app.get('/webhook', (req, res) => {
-  const mode = req.query['hub.mode'];
-  const token = req.query['hub.verify_token'];
-  const challenge = req.query['hub.challenge'];
-
-  if (mode && token) {
-    if (mode === 'subscribe' && token === config.facebook.verifyToken) {
-      logger.info('Webhook verified successfully');
-      res.status(200).send(challenge);
-    } else {
-      logger.warn('Webhook verification failed: invalid token');
-      res.sendStatus(403);
-    }
-  } else {
-    logger.warn('Webhook verification failed: missing parameters');
-    res.sendStatus(400);
-  }
-});
-
-// Webhook events endpoint (POST)
-app.post('/webhook', async (req, res) => {
-  const body = req.body;
-
-  // Acknowledge receipt immediately
-  res.status(200).send('EVENT_RECEIVED');
-
-  if (body.object === 'page') {
-    try {
-      for (const entry of body.entry) {
-        if (!entry.messaging) continue;
-
-        for (const webhook_event of entry.messaging) {
-          const sender_psid = webhook_event.sender.id;
-
-          logger.info(`Received event from user ${sender_psid}`, {
-            eventType: Object.keys(webhook_event).filter(k => k !== 'sender' && k !== 'recipient'),
-          });
-
-          // Handle messages
-          if (webhook_event.message) {
-            await handleMessage(sender_psid, webhook_event.message);
-          }
-          // Handle postbacks (button clicks)
-          else if (webhook_event.postback) {
-            logger.info(`Postback received from user ${sender_psid}`);
-          }
-        }
-      }
-    } catch (error) {
-      logger.error(`Error processing webhook: ${error.message}`, { error });
-    }
-  } else {
-    logger.warn(`Received webhook for unknown object type: ${body.object}`);
-  }
-});
-
-/**
- * Handle incoming message
- */
-async function handleMessage(sender_psid, received_message) {
-  try {
-    // Skip if no text
-    if (!received_message.text) {
-      logger.debug(`Received non-text message from user ${sender_psid}`);
-      return;
-    }
-
-    const text = received_message.text;
-    logger.info(`Message from user ${sender_psid}: ${text}`);
-
-    // Parse command
-    const { command, params } = facebookService.parseCommand(text);
-
-    if (command) {
-      // Execute command
-      await commandHandler.execute(sender_psid, command, params);
-    } else {
-      // Default response for non-command messages
-      const response = `👋 Halo! Pesan kamu: "${text}" sudah masuk.\n\nKetik /help untuk melihat perintah yang bisa saya jalankan!`;
-      await facebookService.sendTextMessage(sender_psid, response);
-    }
-  } catch (error) {
-    logger.error(`Error handling message from user ${sender_psid}: ${error.message}`, { error });
-
-    try {
-      await facebookService.sendTextMessage(
-        sender_psid,
-        '😅 Ada error di sistem saya. Tim admin sudah diberitahu. Coba lagi nanti ya!'
-      );
-    } catch (sendError) {
-      logger.error(`Failed to send error message: ${sendError.message}`);
-    }
-  }
+  logger.info('🤖 DAO UMKM Secretary Bot is online (polling)');
+  logger.info(`🔗 DAO Space: ${config.dao.spaceName}`);
+  logger.info(`🤖 AI Model: ${config.groq.model}`);
+} else {
+  logger.info('🚀 Starting bot with webhook...');
+  logger.warn('Webhook mode not configured. Using polling instead.');
+  bot.launch();
 }
 
-// Error handling middleware
-app.use((err, req, res, next) => {
-  logger.error(`Express error: ${err.message}`, { error: err });
-  res.status(500).json({ error: 'Internal server error' });
+// Enable graceful stop
+process.once('SIGINT', () => {
+  logger.info('SIGINT received: gracefully stopping bot');
+  bot.stop('SIGINT');
 });
 
-// Start server
-const PORT = config.server.port;
-app.listen(PORT, () => {
-  logger.info(`🚀 DAO UMKM Secretary Bot is running on port ${PORT}`);
-  logger.info(`📍 Environment: ${config.server.nodeEnv}`);
-  logger.info(`🔗 DAO Space: ${config.dao.spaceName}`);
-  logger.info(`📊 Snapshot API: ${config.dao.snapshotApiUrl}`);
+process.once('SIGTERM', () => {
+  logger.info('SIGTERM received: gracefully stopping bot');
+  bot.stop('SIGTERM');
 });
 
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  logger.info('SIGTERM signal received: closing HTTP server');
-  process.exit(0);
-});
-
-process.on('SIGINT', () => {
-  logger.info('SIGINT signal received: closing HTTP server');
-  process.exit(0);
-});
-
-module.exports = app;
+module.exports = bot;
