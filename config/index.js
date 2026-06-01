@@ -13,6 +13,11 @@ const config = {
     spaceName: process.env.DAO_SPACE_NAME || 'daoukmmk.eth',
     snapshotApiUrl: process.env.SNAPSHOT_API_URL || 'https://hub.snapshot.org/graphql',
   },
+  openai: {
+    apiKey: process.env.OPENAI_API_KEY,
+    model: process.env.OPENAI_MODEL || 'gpt-3.5-turbo',
+    maxTokens: parseInt(process.env.OPENAI_MAX_TOKENS) || 150,
+  },
   rateLimit: {
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 600000, // 10 minutes
     maxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 1,
@@ -23,7 +28,7 @@ const config = {
 };
 
 // Validation
-const requiredEnvVars = ['PAGE_ACCESS_TOKEN', 'VERIFY_TOKEN'];
+const requiredEnvVars = ['PAGE_ACCESS_TOKEN', 'VERIFY_TOKEN', 'OPENAI_API_KEY'];
 const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
 
 if (missingEnvVars.length > 0) {

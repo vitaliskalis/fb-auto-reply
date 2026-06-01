@@ -1,7 +1,7 @@
 {
   "name": "fb-auto-reply",
-  "version": "2.0.0",
-  "description": "DAO UMKM Facebook Messenger Secretary Bot",
+  "version": "2.1.0",
+  "description": "DAO UMKM Facebook Messenger Secretary Bot with AI",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
@@ -15,7 +15,8 @@
     "dotenv": "^16.3.1",
     "winston": "^3.11.0",
     "express-rate-limit": "^7.1.5",
-    "@snapshot-labs/snapshot.js": "^0.4.32"
+    "@snapshot-labs/snapshot.js": "^0.4.32",
+    "openai": "^4.28.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
